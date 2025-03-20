@@ -3,10 +3,6 @@
 <head>
     <title>UFO Cow Abduction Game</title>
     <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div id="score">Cows Abducted: <span id="cowCount">0</span></div>
-    <canvas id="game"></canvas>
     <script type="importmap">
         {
             "imports": {
@@ -15,6 +11,11 @@
             }
         }
     </script>
+</head>
+<body>
+    <div id="score">Cows Abducted: <span id="cowCount">0</span></div>
+    <div id="instructions">Use WASD to move around the planet, Q/E to rotate UFO</div>
+    <canvas id="game"></canvas>
     <script type="module" src="game.js"></script>
 </body>
 </html>

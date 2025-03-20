@@ -10,6 +10,13 @@ class Game {
         this.clock = new THREE.Clock();
         this.ufoRotation = 0;
         
+        // Set background
+        this.scene.background = new THREE.Color(0x000020);
+        
+        // Planet properties
+        this.planetRadius = 20;
+        this.gravity = new THREE.Vector3(0, -1, 0);
+        
         // Fixed camera angle (no orbit)
         this.cameraOffset = new THREE.Vector3(0, 10, 15);
 
@@ -20,12 +27,11 @@ class Game {
         directionalLight.position.set(0, 10, 5);
         this.scene.add(directionalLight);
 
-        // Ground
-        const groundGeometry = new THREE.PlaneGeometry(100, 100);
-        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x33aa33 });
-        this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        this.ground.rotation.x = -Math.PI / 2;
-        this.scene.add(this.ground);
+        // Create stars
+        this.createStars();
+        
+        // Create planet
+        this.createPlanet();
 
         // UFO
         this.createUFO();
@@ -42,6 +48,110 @@ class Game {
 
         // Animation
         this.animate();
+    }
+    
+    createStars() {
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.1,
+            sizeAttenuation: true
+        });
+        
+        const starsVertices = [];
+        for (let i = 0; i < 1000; i++) {
+            const x = (Math.random() - 0.5) * 2000;
+            const y = (Math.random() - 0.5) * 2000;
+            const z = (Math.random() - 0.5) * 2000;
+            starsVertices.push(x, y, z);
+        }
+        
+        starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        this.scene.add(stars);
+    }
+    
+    createPlanet() {
+        // Planet geometry
+        const planetGeometry = new THREE.SphereGeometry(this.planetRadius, 64, 64);
+        
+        // Planet material with grass texture
+        const planetMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x33aa33,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        
+        this.planet = new THREE.Mesh(planetGeometry, planetMaterial);
+        this.scene.add(this.planet);
+        
+        // Add some random mountains and craters
+        this.addTerrainFeatures();
+    }
+    
+    addTerrainFeatures() {
+        // Add mountains
+        for (let i = 0; i < 20; i++) {
+            const phi = Math.random() * Math.PI * 2;
+            const theta = Math.random() * Math.PI;
+            
+            const mountainGeometry = new THREE.ConeGeometry(
+                Math.random() * 2 + 1, 
+                Math.random() * 3 + 2, 
+                4
+            );
+            
+            const mountainMaterial = new THREE.MeshStandardMaterial({
+                color: 0x228822,
+                roughness: 0.9
+            });
+            
+            const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+            
+            // Position on sphere surface
+            const x = this.planetRadius * Math.sin(theta) * Math.cos(phi);
+            const y = this.planetRadius * Math.sin(theta) * Math.sin(phi);
+            const z = this.planetRadius * Math.cos(theta);
+            
+            mountain.position.set(x, y, z);
+            
+            // Orient to face away from center
+            mountain.lookAt(0, 0, 0);
+            mountain.rotateX(Math.PI / 2);
+            
+            this.scene.add(mountain);
+        }
+        
+        // Add craters
+        for (let i = 0; i < 10; i++) {
+            const phi = Math.random() * Math.PI * 2;
+            const theta = Math.random() * Math.PI;
+            
+            const craterGeometry = new THREE.CircleGeometry(
+                Math.random() * 1.5 + 0.5,
+                32
+            );
+            
+            const craterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x227722,
+                roughness: 1,
+                side: THREE.DoubleSide
+            });
+            
+            const crater = new THREE.Mesh(craterGeometry, craterMaterial);
+            
+            // Position slightly above sphere surface
+            const x = this.planetRadius * Math.sin(theta) * Math.cos(phi);
+            const y = this.planetRadius * Math.sin(theta) * Math.sin(phi);
+            const z = this.planetRadius * Math.cos(theta);
+            
+            crater.position.set(x, y, z);
+            
+            // Orient to face away from center
+            crater.lookAt(0, 0, 0);
+            
+            this.scene.add(crater);
+        }
     }
 
     createUFO() {
@@ -85,9 +195,42 @@ class Game {
         ufoGroup.add(dome);
         ufoGroup.add(this.tractorBeam);
         ufoGroup.add(this.tractorBeamGlow);
-        ufoGroup.position.y = 5;
+        
+        // Position UFO above planet
+        this.positionOnPlanet(ufoGroup, 0, 0, 5);
+        
         this.scene.add(ufoGroup);
         this.ufo = ufoGroup;
+    }
+    
+    // Helper function to position objects on planet surface
+    positionOnPlanet(object, longitude, latitude, height = 0) {
+        // Convert from spherical to cartesian coordinates
+        const phi = (90 - latitude) * (Math.PI / 180);
+        const theta = (longitude + 180) * (Math.PI / 180);
+        
+        // Calculate position on sphere
+        const x = -(this.planetRadius + height) * Math.sin(phi) * Math.cos(theta);
+        const y = (this.planetRadius + height) * Math.cos(phi);
+        const z = (this.planetRadius + height) * Math.sin(phi) * Math.sin(theta);
+        
+        // Set position
+        object.position.set(x, y, z);
+        
+        // Orient object to face away from planet center
+        const normal = new THREE.Vector3(x, y, z).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        
+        // Create a quaternion that aligns the object's up with the normal
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+        object.setRotationFromQuaternion(quaternion);
+        
+        // Store the object's local up vector (normal to planet)
+        object.userData.localUp = normal.clone();
+        object.userData.longitude = longitude;
+        object.userData.latitude = latitude;
+        
+        return object;
     }
 
     createCows(count) {
@@ -108,10 +251,11 @@ class Game {
             cowGroup.add(body);
             cowGroup.add(head);
             
-            // Random position
-            cowGroup.position.x = (Math.random() - 0.5) * 80;
-            cowGroup.position.z = (Math.random() - 0.5) * 80;
-            cowGroup.position.y = 0.8;
+            // Random position on planet
+            const longitude = Math.random() * 360 - 180;
+            const latitude = Math.random() * 180 - 90;
+            
+            this.positionOnPlanet(cowGroup, longitude, latitude, 1);
             
             this.scene.add(cowGroup);
             this.cows.push({
@@ -119,65 +263,80 @@ class Game {
                 isBeingAbducted: false,
                 abductionProgress: 0,
                 wanderAngle: Math.random() * Math.PI * 2,
-                wanderTime: 0
+                wanderTime: 0,
+                longitude: longitude,
+                latitude: latitude
             });
         }
     }
 
     updateUFO() {
-        const speed = 0.2;
+        const speed = 1;
         const rotationSpeed = 0.03;
+        
+        // Get current position data
+        let longitude = this.ufo.userData.longitude || 0;
+        let latitude = this.ufo.userData.latitude || 0;
         
         // Rotate UFO with Q and E
         if (this.keys['q']) this.ufoRotation += rotationSpeed;
         if (this.keys['e']) this.ufoRotation -= rotationSpeed;
-
-        // Calculate movement based on UFO's rotation
-        let dx = 0;
-        let dz = 0;
-
-        if (this.keys['w'] || this.keys['s'] || this.keys['a'] || this.keys['d']) {
-            // Get basic direction from input
-            let inputX = 0;
-            let inputZ = 0;
-            
-            if (this.keys['w']) inputZ -= speed;
-            if (this.keys['s']) inputZ += speed;
-            if (this.keys['a']) inputX -= speed;
-            if (this.keys['d']) inputX += speed;
-
-            // Apply UFO's rotation to the movement
-            dx = inputX * Math.cos(this.ufoRotation) + inputZ * Math.sin(this.ufoRotation);
-            dz = -inputX * Math.sin(this.ufoRotation) + inputZ * Math.cos(this.ufoRotation);
-        }
-
-        // Apply movement
-        this.ufo.position.x += dx;
-        this.ufo.position.z += dz;
         
-        // Keep UFO within bounds
-        this.ufo.position.x = Math.max(-45, Math.min(45, this.ufo.position.x));
-        this.ufo.position.z = Math.max(-45, Math.min(45, this.ufo.position.z));
-
-        // Update UFO rotation
-        this.ufo.rotation.y = this.ufoRotation;
-
-        // Update camera position - now follows UFO's rotation
-        const targetPosition = new THREE.Vector3(
-            this.ufo.position.x + Math.sin(this.ufoRotation) * this.cameraOffset.z,
-            this.ufo.position.y + this.cameraOffset.y,
-            this.ufo.position.z + Math.cos(this.ufoRotation) * this.cameraOffset.z
-        );
-
-        // Smoothly interpolate camera position
-        this.camera.position.lerp(targetPosition, 0.1);
-        this.camera.lookAt(this.ufo.position.x, this.ufo.position.y - 2, this.ufo.position.z);
-
+        // Move UFO on planet surface
+        if (this.keys['w']) latitude += speed;
+        if (this.keys['s']) latitude -= speed;
+        if (this.keys['a']) longitude -= speed;
+        if (this.keys['d']) longitude += speed;
+        
+        // Clamp latitude to avoid going over the poles
+        latitude = Math.max(-85, Math.min(85, latitude));
+        
+        // Wrap longitude around
+        if (longitude > 180) longitude -= 360;
+        if (longitude < -180) longitude += 360;
+        
+        // Update UFO position on planet
+        this.positionOnPlanet(this.ufo, longitude, latitude, 5);
+        
+        // Apply local rotation
+        this.ufo.rotateY(this.ufoRotation);
+        
+        // Update camera to follow UFO
+        this.updateCamera();
+        
         // Update tractor beam effects
         this.tractorBeam.material.opacity = 0.3 + Math.sin(Date.now() * 0.003) * 0.1;
         this.tractorBeamGlow.material.opacity = 0.1 + Math.sin(Date.now() * 0.003) * 0.05;
         this.tractorBeam.rotation.y += 0.02;
         this.tractorBeamGlow.rotation.y -= 0.01;
+    }
+    
+    updateCamera() {
+        // Get UFO's position and normal
+        const ufoPosition = this.ufo.position.clone();
+        const ufoNormal = this.ufo.userData.localUp.clone();
+        
+        // Calculate camera position: behind and above UFO
+        const offsetDistance = 15;
+        const heightOffset = 8;
+        
+        // Create a vector pointing from UFO in the opposite direction of planet center
+        const awayFromPlanet = ufoNormal.clone().multiplyScalar(heightOffset);
+        
+        // Create a vector pointing behind the UFO based on its rotation
+        const behindUfo = new THREE.Vector3(0, 0, offsetDistance);
+        behindUfo.applyQuaternion(this.ufo.quaternion);
+        
+        // Combine these vectors with the UFO position
+        const cameraPosition = ufoPosition.clone()
+            .add(awayFromPlanet)
+            .add(behindUfo);
+        
+        // Smoothly move camera to new position
+        this.camera.position.lerp(cameraPosition, 0.1);
+        
+        // Look at UFO
+        this.camera.lookAt(ufoPosition);
     }
 
     updateCows() {
@@ -186,16 +345,14 @@ class Game {
         this.cows.forEach((cow, index) => {
             if (cow.isBeingAbducted) {
                 cow.abductionProgress += 0.02;
-                const targetY = this.ufo.position.y - 2;
-                cow.mesh.position.y = Math.min(targetY, cow.mesh.position.y + 0.1);
+                
+                // Move cow towards UFO
+                const ufoPosition = this.ufo.position.clone();
+                cow.mesh.position.lerp(ufoPosition, 0.05);
                 
                 // Spin the cow while being abducted
                 cow.mesh.rotation.y += 0.1;
                 cow.mesh.rotation.x = Math.sin(Date.now() * 0.003) * 0.2;
-                
-                // Move towards UFO
-                cow.mesh.position.x += (this.ufo.position.x - cow.mesh.position.x) * 0.1;
-                cow.mesh.position.z += (this.ufo.position.z - cow.mesh.position.z) * 0.1;
                 
                 if (cow.abductionProgress >= 1) {
                     this.scene.remove(cow.mesh);
@@ -209,7 +366,7 @@ class Game {
                     }
                 }
             } else {
-                // Wandering behavior
+                // Wandering behavior on planet surface
                 cow.wanderTime += deltaTime;
                 
                 // Change direction every few seconds
@@ -218,25 +375,30 @@ class Game {
                     cow.wanderTime = 0;
                 }
                 
-                // Move in current direction
-                const speed = 0.03;
-                cow.mesh.position.x += Math.cos(cow.wanderAngle) * speed;
-                cow.mesh.position.z += Math.sin(cow.wanderAngle) * speed;
+                // Move in current direction on planet surface
+                const speed = 0.3;
+                let newLongitude = cow.longitude;
+                let newLatitude = cow.latitude;
+                
+                newLongitude += Math.cos(cow.wanderAngle) * speed;
+                newLatitude += Math.sin(cow.wanderAngle) * speed;
+                
+                // Wrap and clamp coordinates
+                if (newLongitude > 180) newLongitude -= 360;
+                if (newLongitude < -180) newLongitude += 360;
+                newLatitude = Math.max(-85, Math.min(85, newLatitude));
+                
+                // Update cow position
+                this.positionOnPlanet(cow.mesh, newLongitude, newLatitude, 1);
+                cow.longitude = newLongitude;
+                cow.latitude = newLatitude;
                 
                 // Rotate cow to face movement direction
-                cow.mesh.rotation.y = cow.wanderAngle;
-                
-                // Keep cows within bounds
-                cow.mesh.position.x = Math.max(-45, Math.min(45, cow.mesh.position.x));
-                cow.mesh.position.z = Math.max(-45, Math.min(45, cow.mesh.position.z));
+                cow.mesh.rotateY(cow.wanderAngle);
                 
                 // Check if cow is under UFO beam
-                const distance = new THREE.Vector2(
-                    cow.mesh.position.x - this.ufo.position.x, 
-                    cow.mesh.position.z - this.ufo.position.z
-                ).length();
-                
-                if (distance < 2) {
+                const distance = cow.mesh.position.distanceTo(this.ufo.position);
+                if (distance < 5) {
                     cow.isBeingAbducted = true;
                 }
             }
@@ -248,6 +410,9 @@ class Game {
         
         this.updateUFO();
         this.updateCows();
+        
+        // Slowly rotate the planet
+        this.planet.rotation.y += 0.0005;
         
         this.renderer.render(this.scene, this.camera);
     }
